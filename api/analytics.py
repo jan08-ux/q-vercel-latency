@@ -1,13 +1,13 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import json
-import os
 import numpy as np
+import pathlib
 
 app = FastAPI()
 
-# Enable CORS for ALL origins (required in assignment)
+# Enable CORS for POST from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,16 +15,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load telemetry file
-file_path = os.path.join(os.path.dirname(__file__), "..", "q-vercel-latency.json")
+# Load JSON file
+BASE_DIR = pathlib.Path(__file__).parent
+file_path = BASE_DIR / "q-vercel-latency.json"
 
-with open(file_path, "r") as f:
+with open(file_path) as f:
     data = json.load(f)
 
 
 @app.post("/api/analytics")
-async def analyze(request: Request):
-    body = await request.json()
+async def analytics(body: dict):
 
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 0)
@@ -40,16 +40,11 @@ async def analyze(request: Request):
         latencies = [r["latency_ms"] for r in region_data]
         uptimes = [r["uptime"] for r in region_data]
 
-        avg_latency = float(np.mean(latencies))
-        p95_latency = float(np.percentile(latencies, 95))
-        avg_uptime = float(np.mean(uptimes))
-        breaches = sum(1 for l in latencies if l > threshold)
-
         result[region] = {
-            "avg_latency": round(avg_latency, 2),
-            "p95_latency": round(p95_latency, 2),
-            "avg_uptime": round(avg_uptime, 4),
-            "breaches": breaches
+            "avg_latency": round(float(np.mean(latencies)), 2),
+            "p95_latency": round(float(np.percentile(latencies, 95)), 2),
+            "avg_uptime": round(float(np.mean(uptimes)), 4),
+            "breaches": sum(1 for l in latencies if l > threshold)
         }
 
     return JSONResponse(result)

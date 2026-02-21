@@ -48,3 +48,4 @@ async def analytics(body: dict):
         }
 
     return JSONResponse(result)
+ 

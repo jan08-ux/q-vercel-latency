@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Response, Request
 import json
 import pathlib
 import numpy as np
@@ -6,7 +6,7 @@ import numpy as np
 app = FastAPI()
 
 @app.options("/api")
-async def options_handler(response: Response):
+async def options(response: Response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
@@ -15,10 +15,7 @@ async def options_handler(response: Response):
 @app.post("/api")
 async def analytics(request: Request, response: Response):
 
-    # 🔴 FORCE CORS HEADER HERE
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
 
     body = await request.json()
 
@@ -36,11 +33,8 @@ async def analytics(request: Request, response: Response):
     for region in regions:
         region_records = [
             r for r in data
-            if str(r.get("region", "")).lower() == region.lower()
+            if r.get("region", "").lower() == region.lower()
         ]
-
-        if not region_records:
-            continue
 
         latencies = [float(r.get("latency_ms", 0)) for r in region_records]
         uptimes = [float(r.get("uptime", 0)) for r in region_records]
@@ -49,7 +43,7 @@ async def analytics(request: Request, response: Response):
             "avg_latency": round(float(np.mean(latencies)), 2),
             "p95_latency": round(float(np.percentile(latencies, 95)), 2),
             "avg_uptime": round(float(np.mean(uptimes)), 4),
-            "breaches": int(sum(1 for l in latencies if l > threshold))
+            "breaches": sum(1 for l in latencies if l > threshold)
         }
 
     return result

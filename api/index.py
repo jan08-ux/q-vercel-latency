@@ -6,8 +6,8 @@ import numpy as np
 
 app = FastAPI()
 
-# 1. THE PROPER CORS FIX
-# This handles the "Preflight" (OPTIONS) requests that are likely failing your grader
+# 1. THE SECRET HANDSHAKE (CORS Middleware)
+# This handles the pre-check "knocks" automatically for you.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,7 +17,7 @@ app.add_middleware(
 
 @app.post("/api")
 async def analytics(request: Request):
-    # Load the body data
+    # Get the request data
     body = await request.json()
     
     BASE_DIR = pathlib.Path(__file__).parent
@@ -29,17 +29,10 @@ async def analytics(request: Request):
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 180)
 
-    # 2. THE UPTIME LABEL FINDER
-    # Let's look at the first row to see what 'uptime' is actually called
-    sample = data[0] if data else {}
-    # This looks for any key that starts with 'up' (like 'uptime', 'uptime_pct', etc.)
-    up_key = next((k for k in sample if k.lower().startswith('up')), 'uptime')
-    # Do the same for latency just to be safe
-    lat_key = next((k for k in sample if 'lat' in k.lower()), 'latency_ms')
-
     result = {}
 
     for region in regions:
+        # Filter data for the region (case-insensitive)
         region_records = [
             r for r in data
             if str(r.get("region", "")).lower() == region.lower()
@@ -48,10 +41,11 @@ async def analytics(request: Request):
         if not region_records:
             continue
 
-        # Use our detected keys here
-        latencies = [float(r.get(lat_key, 0)) for r in region_records]
-        uptimes = [float(r.get(up_key, 0)) for r in region_records]
+        # Extract values (using the keys that worked in your last run)
+        latencies = [float(r.get("latency_ms", 0)) for r in region_records]
+        uptimes = [float(r.get("uptime", 0)) for r in region_records]
 
+        # Calculate metrics
         result[region] = {
             "avg_latency": round(float(np.mean(latencies)), 2),
             "p95_latency": round(float(np.percentile(latencies, 95)), 2),

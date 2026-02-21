@@ -1,25 +1,27 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Response
 import json
 import pathlib
 import numpy as np
 
 app = FastAPI()
 
-# 1. THE SECRET HANDSHAKE (CORS Middleware)
-# This handles the pre-check "knocks" automatically for you.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.options("/api")
+async def options_handler(response: Response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return {}
 
 @app.post("/api")
-async def analytics(request: Request):
-    # Get the request data
+async def analytics(request: Request, response: Response):
+
+    # 🔴 FORCE CORS HEADER HERE
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+
     body = await request.json()
-    
+
     BASE_DIR = pathlib.Path(__file__).parent
     file_path = BASE_DIR / "q-vercel-latency.json"
 
@@ -32,7 +34,6 @@ async def analytics(request: Request):
     result = {}
 
     for region in regions:
-        # Filter data for the region (case-insensitive)
         region_records = [
             r for r in data
             if str(r.get("region", "")).lower() == region.lower()
@@ -41,11 +42,9 @@ async def analytics(request: Request):
         if not region_records:
             continue
 
-        # Extract values (using the keys that worked in your last run)
         latencies = [float(r.get("latency_ms", 0)) for r in region_records]
         uptimes = [float(r.get("uptime", 0)) for r in region_records]
 
-        # Calculate metrics
         result[region] = {
             "avg_latency": round(float(np.mean(latencies)), 2),
             "p95_latency": round(float(np.percentile(latencies, 95)), 2),

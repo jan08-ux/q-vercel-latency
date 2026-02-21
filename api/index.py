@@ -5,7 +5,7 @@ import numpy as np
 
 app = FastAPI()
 
-@app.options("/api")
+@app.post("/api/analytics")
 async def options(response: Response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"

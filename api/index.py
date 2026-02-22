@@ -2,11 +2,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import pathlib
-import numpy as np
+import statistics
 
 app = FastAPI()
 
-# Stay safe with the CORS settings that finally worked
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,38 +17,61 @@ app.add_middleware(
 
 @app.post("/api")
 async def analytics(request: Request):
-    body = await request.json()
+    payload = await request.json()
     
     BASE_DIR = pathlib.Path(__file__).parent
     file_path = BASE_DIR / "q-vercel-latency.json"
 
     with open(file_path) as f:
-        data = json.load(f)
+        telemetry_data = json.load(f)
 
-    target_regions = body.get("regions", [])
-    threshold = body.get("threshold_ms", 180)
-
-    result = {}
+    results = {}
+    
+    # Use the keys from your payload
+    target_regions = payload.get("regions", [])
+    threshold_ms = payload.get("threshold_ms", 180)
 
     for region in target_regions:
-        region_records = [
-            r for r in data 
-            if str(r.get("region", "")).lower() == region.lower()
+        # Filter data (case-insensitive to be safe)
+        region_data = [
+            record for record in telemetry_data 
+            if str(record.get("region", "")).lower() == region.lower()
         ]
-
-        if not region_records:
+        
+        if not region_data:
             continue
-
-        latencies = [float(r.get("latency_ms", 0)) for r in region_records]
-        uptimes = [float(r.get("uptime", 0)) for r in region_records]
-
-        # THE PRECISION ADJUSTMENT
-        result[region] = {
-            "avg_latency": round(float(np.mean(latencies)), 2),
-            "p95_latency": round(float(np.percentile(latencies, 95)), 2),
-            "avg_uptime": round(float(np.mean(uptimes)), 3), # Changed to 3 for the grader
-            "breaches": int(sum(1 for l in latencies if l > threshold))
+        
+        # NOTE: Using .get() with defaults to prevent crashes
+        # Ensure "latency_ms" and "uptime" match your JSON file keys exactly
+        latencies = [float(record.get("latency_ms", 0)) for record in region_data]
+        uptimes = [float(record.get("uptime", 0)) for record in region_data]
+        
+        # Calculate mean latency
+        avg_latency = statistics.mean(latencies)
+        
+        # Your custom P95 linear interpolation logic
+        sorted_latencies = sorted(latencies)
+        n = len(sorted_latencies)
+        index = 0.95 * (n - 1)
+        lower = int(index)
+        upper = lower + 1
+        fraction = index - lower
+        
+        if upper < n:
+            p95_latency = sorted_latencies[lower] + fraction * (sorted_latencies[upper] - sorted_latencies[lower])
+        else:
+            p95_latency = sorted_latencies[lower]
+        
+        avg_uptime = statistics.mean(uptimes)
+        
+        # Count breaches
+        breaches = sum(1 for lat in latencies if lat > threshold_ms)
+        
+        results[region] = {
+            "avg_latency": round(avg_latency, 2),
+            "p95_latency": round(p95_latency, 2),
+            "avg_uptime": round(avg_uptime, 3), # CRITICAL: Fixed to 3 decimal places
+            "breaches": breaches
         }
-
-    # Keep the wrapper that fixed your previous error
-    return {"regions": result}
+    
+    return {"regions": results}

@@ -6,7 +6,6 @@ import numpy as np
 
 app = FastAPI()
 
-# Keep your working CORS settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,12 +42,12 @@ async def analytics(request: Request):
         latencies = [float(r.get("latency_ms", 0)) for r in region_records]
         uptimes = [float(r.get("uptime", 0)) for r in region_records]
 
+        # CALCULATIONS WITH CORRECT ROUNDING
         result[region] = {
             "avg_latency": round(float(np.mean(latencies)), 2),
             "p95_latency": round(float(np.percentile(latencies, 95)), 2),
-            "avg_uptime": round(float(np.mean(uptimes)), 4),
+            "avg_uptime": round(float(np.mean(uptimes)), 3), # CHANGED FROM 4 TO 3
             "breaches": int(sum(1 for l in latencies if l > threshold))
         }
 
-    # THE CRITICAL CHANGE: Wrap the output in a "regions" key
     return {"regions": result}

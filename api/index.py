@@ -6,31 +6,27 @@ import numpy as np
 
 app = FastAPI()
 
-# 1. Standard CORS Middleware
+# Standard FastAPI CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 2. Catch invisible pre-flight 'OPTIONS' requests explicitly
+# Explicitly handle OPTIONS requests (The 'Pre-flight' check)
 @app.options("/api")
-async def preflight():
-    return Response(status_code=200, headers={
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-    })
+async def options_handler():
+    return Response(status_code=200)
 
-# 3. Your POST route, injecting the header directly into the response
 @app.post("/api")
-async def analytics(request: Request, response: Response):
-    # Force the header on the actual data response
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    
-    body = await request.json()
-    
+async def analytics(request: Request):
+    try:
+        body = await request.json()
+    except:
+        return {"error": "Invalid JSON"}
+
     BASE_DIR = pathlib.Path(__file__).parent
     file_path = BASE_DIR / "q-vercel-latency.json"
 
@@ -39,18 +35,19 @@ async def analytics(request: Request, response: Response):
 
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 180)
-
     result = {}
 
     for region in regions:
+        # Match region case-insensitively
         region_records = [
-            r for r in data
+            r for r in data 
             if str(r.get("region", "")).lower() == region.lower()
         ]
 
         if not region_records:
             continue
 
+        # Based on your working terminal output:
         latencies = [float(r.get("latency_ms", 0)) for r in region_records]
         uptimes = [float(r.get("uptime", 0)) for r in region_records]
 

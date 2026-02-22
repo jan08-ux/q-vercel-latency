@@ -1,15 +1,16 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import pathlib
 import statistics
+import math
 
 app = FastAPI()
 
+# 1. FORCE CORS - This handles the 'Access-Control-Allow-Origin' error
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -26,51 +27,45 @@ async def analytics(request: Request):
         telemetry_data = json.load(f)
 
     results = {}
-    
-    # Use the keys from your payload
     target_regions = payload.get("regions", [])
     threshold_ms = payload.get("threshold_ms", 180)
 
     for region in target_regions:
-        # Filter data (case-insensitive to be safe)
+        # Filtering (Case-insensitive)
         region_data = [
-            record for record in telemetry_data 
-            if str(record.get("region", "")).lower() == region.lower()
+            r for r in telemetry_data 
+            if str(r.get("region", "")).lower() == region.lower()
         ]
         
         if not region_data:
             continue
         
-        # NOTE: Using .get() with defaults to prevent crashes
-        # Ensure "latency_ms" and "uptime" match your JSON file keys exactly
-        latencies = [float(record.get("latency_ms", 0)) for record in region_data]
-        uptimes = [float(record.get("uptime", 0)) for record in region_data]
+        # Use .get() to avoid KeyErrors. Most JSONs use "uptime" or "uptime_pct"
+        # We check for "uptime" based on your previous logs
+        latencies = [float(r.get("latency_ms", 0)) for r in region_data]
+        uptimes = [float(r.get("uptime", 0)) for r in region_data]
         
-        # Calculate mean latency
+        # MATH SECTION
         avg_latency = statistics.mean(latencies)
         
-        # Your custom P95 linear interpolation logic
-        sorted_latencies = sorted(latencies)
-        n = len(sorted_latencies)
-        index = 0.95 * (n - 1)
-        lower = int(index)
-        upper = lower + 1
-        fraction = index - lower
-        
-        if upper < n:
-            p95_latency = sorted_latencies[lower] + fraction * (sorted_latencies[upper] - sorted_latencies[lower])
+        # P95 Calculation - Using the specific formula you provided
+        sorted_l = sorted(latencies)
+        n = len(sorted_l)
+        idx = 0.95 * (n - 1)
+        low = int(idx)
+        high = low + 1
+        if high < n:
+            p95 = sorted_l[low] + (idx - low) * (sorted_l[high] - sorted_l[low])
         else:
-            p95_latency = sorted_latencies[lower]
-        
+            p95 = sorted_l[low]
+            
         avg_uptime = statistics.mean(uptimes)
-        
-        # Count breaches
         breaches = sum(1 for lat in latencies if lat > threshold_ms)
         
         results[region] = {
             "avg_latency": round(avg_latency, 2),
-            "p95_latency": round(p95_latency, 2),
-            "avg_uptime": round(avg_uptime, 3), # CRITICAL: Fixed to 3 decimal places
+            "p95_latency": round(p95, 2),
+            "avg_uptime": round(avg_uptime, 3), # This MUST be 3 to get 98.226
             "breaches": breaches
         }
     

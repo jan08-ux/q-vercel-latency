@@ -6,48 +6,42 @@ import numpy as np
 
 app = FastAPI()
 
-# Standard FastAPI CORS configuration
+# Ultra-permissive CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # Must be False when origin is '*'
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# Explicitly handle OPTIONS requests (The 'Pre-flight' check)
+# Load data
+BASE_DIR = pathlib.Path(__file__).parent
+file_path = BASE_DIR / "q-vercel-latency.json"
+with open(file_path) as f:
+    data = json.load(f)
+
+# Explicitly handle the 'OPTIONS' pre-flight request
 @app.options("/api")
-async def options_handler():
+async def preflight():
     return Response(status_code=200)
 
 @app.post("/api")
 async def analytics(request: Request):
-    try:
-        body = await request.json()
-    except:
-        return {"error": "Invalid JSON"}
-
-    BASE_DIR = pathlib.Path(__file__).parent
-    file_path = BASE_DIR / "q-vercel-latency.json"
-
-    with open(file_path) as f:
-        data = json.load(f)
-
+    body = await request.json()
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 180)
+    
     result = {}
-
     for region in regions:
-        # Match region case-insensitively
         region_records = [
             r for r in data 
             if str(r.get("region", "")).lower() == region.lower()
         ]
-
         if not region_records:
             continue
 
-        # Based on your working terminal output:
         latencies = [float(r.get("latency_ms", 0)) for r in region_records]
         uptimes = [float(r.get("uptime", 0)) for r in region_records]
 
@@ -57,5 +51,4 @@ async def analytics(request: Request):
             "avg_uptime": round(float(np.mean(uptimes)), 4),
             "breaches": int(sum(1 for l in latencies if l > threshold))
         }
-
     return result

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import pathlib
@@ -6,39 +6,37 @@ import numpy as np
 
 app = FastAPI()
 
-# Ultra-permissive CORS configuration
+# Keep your working CORS settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # Must be False when origin is '*'
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
-# Load data
-BASE_DIR = pathlib.Path(__file__).parent
-file_path = BASE_DIR / "q-vercel-latency.json"
-with open(file_path) as f:
-    data = json.load(f)
-
-# Explicitly handle the 'OPTIONS' pre-flight request
-@app.options("/api")
-async def preflight():
-    return Response(status_code=200)
-
 @app.post("/api")
 async def analytics(request: Request):
     body = await request.json()
-    regions = body.get("regions", [])
-    threshold = body.get("threshold_ms", 180)
     
+    BASE_DIR = pathlib.Path(__file__).parent
+    file_path = BASE_DIR / "q-vercel-latency.json"
+
+    with open(file_path) as f:
+        data = json.load(f)
+
+    target_regions = body.get("regions", [])
+    threshold = body.get("threshold_ms", 180)
+
     result = {}
-    for region in regions:
+
+    for region in target_regions:
         region_records = [
             r for r in data 
             if str(r.get("region", "")).lower() == region.lower()
         ]
+
         if not region_records:
             continue
 
@@ -51,4 +49,6 @@ async def analytics(request: Request):
             "avg_uptime": round(float(np.mean(uptimes)), 4),
             "breaches": int(sum(1 for l in latencies if l > threshold))
         }
-    return result
+
+    # THE CRITICAL CHANGE: Wrap the output in a "regions" key
+    return {"regions": result}

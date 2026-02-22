@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import pathlib
@@ -6,33 +6,43 @@ import numpy as np
 
 app = FastAPI()
 
-# THE MAGIC FIX: This handles CORS and OPTIONS pre-flight checks automatically.
+# 1. Standard CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load data once when the app starts
-BASE_DIR = pathlib.Path(__file__).parent
-file_path = BASE_DIR / "q-vercel-latency.json"
+# 2. Catch invisible pre-flight 'OPTIONS' requests explicitly
+@app.options("/api")
+async def preflight():
+    return Response(status_code=200, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+    })
 
-with open(file_path) as f:
-    data = json.load(f)
-
+# 3. Your POST route, injecting the header directly into the response
 @app.post("/api")
-async def analytics(request: Request):
+async def analytics(request: Request, response: Response):
+    # Force the header on the actual data response
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    
     body = await request.json()
     
+    BASE_DIR = pathlib.Path(__file__).parent
+    file_path = BASE_DIR / "q-vercel-latency.json"
+
+    with open(file_path) as f:
+        data = json.load(f)
+
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 180)
 
     result = {}
 
     for region in regions:
-        # Filter the data for the requested region
         region_records = [
             r for r in data
             if str(r.get("region", "")).lower() == region.lower()
@@ -41,11 +51,9 @@ async def analytics(request: Request):
         if not region_records:
             continue
 
-        # Extract the numbers using the keys that worked in your terminal
         latencies = [float(r.get("latency_ms", 0)) for r in region_records]
         uptimes = [float(r.get("uptime", 0)) for r in region_records]
 
-        # Calculate and round the metrics
         result[region] = {
             "avg_latency": round(float(np.mean(latencies)), 2),
             "p95_latency": round(float(np.percentile(latencies, 95)), 2),

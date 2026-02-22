@@ -7,8 +7,13 @@
   ],
   "routes": [
     {
-      "src": "/api/analytics",
-      "dest": "api/index.py"
+      "src": "/(.*)",
+      "dest": "api/index.py",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*"
+      }
     }
   ]
 }
